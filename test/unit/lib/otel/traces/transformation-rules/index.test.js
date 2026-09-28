@@ -302,4 +302,58 @@ test('transformation rules module', async (t) => {
     const uniqueNames = new Set(names)
     assert.equal(names.length, uniqueNames.size, 'all rule names should be unique')
   })
+
+  await t.test('attribute_conditions should support {expected, value} format', () => {
+    const { Rule } = require('#agentlib/otel/traces/rules/index.js')
+
+    // Test a rule with the new {expected, value} format
+    const ruleInput = {
+      name: 'TestDbCanonical',
+      type: 'db',
+      matcher: {
+        required_span_kinds: ['client'],
+        required_attribute_keys: ['db.system'],
+        attribute_conditions: {
+          'db.system': {
+            expected: ['sqlite3', 'better-sqlite3', 'node:sqlite'],
+            value: 'sqlite'
+          }
+        }
+      },
+      attributes: [{ key: 'db.system', target: 'segment', name: 'product' }],
+      segment: { name: { template: 'Datastore/statement/${product}/${collection}' } }
+    }
+    const rule = new Rule(ruleInput)
+
+    // Test that node:sqlite matches and returns canonical "sqlite"
+    const span1 = {
+      attributes: { 'db.system': 'node:sqlite' },
+      instrumentationScope: {}
+    }
+    assert.equal(rule.getCanonicalValue('db.system', ruleInput.matcher.attribute_conditions['db.system'], span1.attributes.db.system), 'sqlite')
+
+    // Test that sqlite3 matches and returns canonical "sqlite"
+    const span2 = {
+      attributes: { 'db.system': 'sqlite3' },
+      instrumentationScope: {}
+    }
+    assert.equal(rule.getCanonicalValue('db.system', ruleInput.matcher.attribute_conditions['db.system'], span2.attributes.db.system), 'sqlite')
+
+    // Test that non-matching value returns original
+    const span3 = {
+      attributes: { 'db.system': 'mysql' },
+      instrumentationScope: {}
+    }
+    assert.equal(rule.getCanonicalValue('db.system', ruleInput.matcher.attribute_conditions['db.system'], span3.attributes.db.system), 'mysql')
+
+    // Test that an exact-match span (node:sqlite) satisfies the rule
+    assert.equal(rule.matches(span1), true, 'node:sqlite should match the rule')
+
+    // Test that an unknown db system does not match
+    const span4 = {
+      attributes: { 'db.system': 'postgres' },
+      instrumentationScope: {}
+    }
+    assert.equal(rule.matches(span4), false, 'postgres should not match the sqlite rule')
+  })
 })
