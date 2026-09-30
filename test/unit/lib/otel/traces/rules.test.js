@@ -156,3 +156,135 @@ test('scope_version does not satisfy', () => {
   const foundRule = engine.test(span)
   assert.equal(foundRule, undefined)
 })
+
+test('attribute_conditions canonicalization object matches expected values', () => {
+  const rule = {
+    name: 'test-sqlite-rule',
+    type: 'db',
+    matcher: {
+      required_span_kinds: ['client'],
+      required_attribute_keys: ['db.system'],
+      attribute_conditions: {
+        'db.system': {
+          expected: ['better-sqlite3', 'node:sqlite', 'sqlite3'],
+          value: 'sqlite'
+        }
+      }
+    },
+    attributes: [{
+      key: 'db.system',
+      target: 'segment',
+      name: 'product'
+    }]
+  }
+  const engine = new RulesEngine({ rules: [rule] })
+
+  // Each variant should match
+  const span1 = tracer.startSpan('test', { kind: SpanKind.CLIENT }, ROOT_CONTEXT)
+  span1.setAttribute('db.system', 'better-sqlite3')
+  span1.end()
+  assert.equal(engine.test(span1).name, 'test-sqlite-rule')
+
+  const span2 = tracer.startSpan('test', { kind: SpanKind.CLIENT }, ROOT_CONTEXT)
+  span2.setAttribute('db.system', 'node:sqlite')
+  span2.end()
+  assert.equal(engine.test(span2).name, 'test-sqlite-rule')
+
+  const span3 = tracer.startSpan('test', { kind: SpanKind.CLIENT }, ROOT_CONTEXT)
+  span3.setAttribute('db.system', 'sqlite3')
+  span3.end()
+  assert.equal(engine.test(span3).name, 'test-sqlite-rule')
+
+  // Non-matching value should not match
+  const span4 = tracer.startSpan('test', { kind: SpanKind.CLIENT }, ROOT_CONTEXT)
+  span4.setAttribute('db.system', 'postgresql')
+  span4.end()
+  assert.equal(engine.test(span4), undefined)
+})
+
+test('getCanonicalAttributeValue returns canonical value for matching input', () => {
+  const rule = {
+    name: 'test-sqlite-rule',
+    type: 'db',
+    matcher: {
+      required_span_kinds: ['client'],
+      required_attribute_keys: ['db.system'],
+      attribute_conditions: {
+        'db.system': {
+          expected: ['better-sqlite3', 'node:sqlite', 'sqlite3'],
+          value: 'sqlite'
+        }
+      }
+    },
+    attributes: []
+  }
+  const engine = new RulesEngine({ rules: [rule] })
+  const ruleInstance = engine.test(
+    tracer.startSpan('test', { kind: SpanKind.CLIENT }, ROOT_CONTEXT)
+  )
+
+  assert.equal(ruleInstance.getCanonicalAttributeValue('db.system', 'better-sqlite3'), 'sqlite')
+  assert.equal(ruleInstance.getCanonicalAttributeValue('db.system', 'node:sqlite'), 'sqlite')
+  assert.equal(ruleInstance.getCanonicalAttributeValue('db.system', 'sqlite3'), 'sqlite')
+  // Non-matching: returns original
+  assert.equal(ruleInstance.getCanonicalAttributeValue('db.system', 'postgresql'), 'postgresql')
+  // Non-matching key: returns original
+  assert.equal(ruleInstance.getCanonicalAttributeValue('messaging.system', 'rabbitmq'), 'rabbitmq')
+})
+
+test('attribute_conditions supports array format (backwards compatible)', () => {
+  const rule = {
+    name: 'test-array-rule',
+    type: 'db',
+    matcher: {
+      required_span_kinds: ['client'],
+      required_attribute_keys: ['db.system'],
+      attribute_conditions: {
+        'db.system': ['redis', 'memcached']
+      }
+    },
+    attributes: []
+  }
+  const engine = new RulesEngine({ rules: [rule] })
+
+  const span1 = tracer.startSpan('test', { kind: SpanKind.CLIENT }, ROOT_CONTEXT)
+  span1.setAttribute('db.system', 'redis')
+  span1.end()
+  assert.equal(engine.test(span1).name, 'test-array-rule')
+
+  const span2 = tracer.startSpan('test', { kind: SpanKind.CLIENT }, ROOT_CONTEXT)
+  span2.setAttribute('db.system', 'memcached')
+  span2.end()
+  assert.equal(engine.test(span2).name, 'test-array-rule')
+
+  const span3 = tracer.startSpan('test', { kind: SpanKind.CLIENT }, ROOT_CONTEXT)
+  span3.setAttribute('db.system', 'postgresql')
+  span3.end()
+  assert.equal(engine.test(span3), undefined)
+})
+
+test('attribute_conditions supports scalar format (backwards compatible)', () => {
+  const rule = {
+    name: 'test-scalar-rule',
+    type: 'db',
+    matcher: {
+      required_span_kinds: ['client'],
+      required_attribute_keys: ['db.system'],
+      attribute_conditions: {
+        'db.system': 'mongodb'
+      }
+    },
+    attributes: []
+  }
+  const engine = new RulesEngine({ rules: [rule] })
+
+  const span1 = tracer.startSpan('test', { kind: SpanKind.CLIENT }, ROOT_CONTEXT)
+  span1.setAttribute('db.system', 'mongodb')
+  span1.end()
+  assert.equal(engine.test(span1).name, 'test-scalar-rule')
+
+  const span2 = tracer.startSpan('test', { kind: SpanKind.CLIENT }, ROOT_CONTEXT)
+  span2.setAttribute('db.system', 'mongo')
+  span2.end()
+  assert.equal(engine.test(span2), undefined)
+})

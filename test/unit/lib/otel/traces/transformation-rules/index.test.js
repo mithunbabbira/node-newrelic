@@ -270,10 +270,18 @@ test('transformation rules module', async (t) => {
     rulesWithConditions.forEach((rule) => {
       const conditions = rule.matcher.attribute_conditions
       for (const [key, values] of Object.entries(conditions)) {
-        assert.ok(Array.isArray(values),
-          `${rule.name} attribute condition for ${key} should be an array`)
-        assert.ok(values.length > 0,
-          `${rule.name} attribute condition for ${key} should not be empty`)
+        if (Array.isArray(values)) {
+          assert.ok(values.length > 0,
+            `${rule.name} attribute condition for ${key} should not be empty`)
+        } else if (typeof values === 'object' && values !== null) {
+          // Canonicalization format: { expected: [...], value: "canonical" }
+          assert.ok(Array.isArray(values.expected) && values.expected.length > 0,
+            `${rule.name} canonicalization for ${key} should have non-empty expected list`)
+          assert.ok(typeof values.value === 'string',
+            `${rule.name} canonicalization for ${key} should have a string value`)
+        } else {
+          assert.fail(`${rule.name} condition for ${key} must be array or canonicalization object`)
+        }
       }
     })
   })

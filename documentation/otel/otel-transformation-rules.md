@@ -38,8 +38,11 @@ Each item in the array is a rule object with the following properties:
 - **required_attribute_keys** (`string[]`):  
   List of attribute keys that must be present on the span.
 
-- **attribute_conditions** (`object`, optional):  
-  An object where each key is an attribute name and the value is an array of allowed values for that attribute.
+- **attribute_conditions** (`object`, optional):
+  An object where each key is an attribute name. Values can be:
+  - **Array of strings**: all allowed values (e.g. `[ "mongodb", "mongo" ]`). The span's attribute must equal one of these.
+  - **Scalar string**: exact match (e.g. `"redis"`).
+  - **Canonicalization object** (new in v12+): `{ "expected": ["v1", "v2"], "value": "canonical" }`. The span's attribute is matched if it is in `expected`, and the canonical `value` is used for segment naming and metrics. This is useful when multiple library names (e.g. `better-sqlite3`, `node:sqlite`) map to the same database type (`sqlite`).
 
 - **scope_name** (`string`, optional):
   Indicates that the span's `instrumentationScope.name` must be set to the  specified value.
