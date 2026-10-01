@@ -41,6 +41,19 @@ Each item in the array is a rule object with the following properties:
 - **attribute_conditions** (`object`, optional):  
   An object where each key is an attribute name and the value is an array of allowed values for that attribute.
 
+  Canonical value mapping is also supported via `{ expected, value }` syntax. When multiple source values should normalize to a single canonical value:
+
+  ```json
+  "attribute_conditions": {
+    "db.system": {
+      "expected": ["sqlite3", "better-sqlite3", "node:sqlite"],
+      "value": "sqlite"
+    }
+  }
+  ```
+
+  In this example, spans with `db.system` set to `"sqlite3"`, `"better-sqlite3"`, or `"node:sqlite"` will all match the rule, and the segment's `product` attribute will be normalized to `"sqlite"`.
+
 - **scope_name** (`string`, optional):
   Indicates that the span's `instrumentationScope.name` must be set to the  specified value.
 

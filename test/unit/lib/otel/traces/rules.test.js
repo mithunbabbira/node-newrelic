@@ -156,3 +156,113 @@ test('scope_version does not satisfy', () => {
   const foundRule = engine.test(span)
   assert.equal(foundRule, undefined)
 })
+
+test('canonical value mapping in attribute_conditions matches expected values', () => {
+  const rule = {
+    name: 'test-sqlite-canonical',
+    type: 'db',
+    matcher: {
+      required_span_kinds: ['client'],
+      required_attribute_keys: ['db.system'],
+      attribute_conditions: {
+        'db.system': {
+          expected: ['sqlite3', 'better-sqlite3', 'node:sqlite'],
+          value: 'sqlite'
+        }
+      }
+    },
+    attributes: [{
+      key: 'db.system',
+      target: 'segment',
+      name: 'product'
+    }]
+  }
+  const engine = new RulesEngine({ rules: [rule] })
+
+  // Test matching "sqlite3"
+  let span = tracer.startSpan('test-span', { kind: SpanKind.CLIENT }, ROOT_CONTEXT)
+  span.setAttribute('db.system', 'sqlite3')
+  span.end()
+  let foundRule = engine.test(span)
+  assert.notEqual(foundRule, undefined)
+  assert.equal(foundRule.name, 'test-sqlite-canonical')
+
+  // Test matching "better-sqlite3"
+  span = tracer.startSpan('test-span', { kind: SpanKind.CLIENT }, ROOT_CONTEXT)
+  span.setAttribute('db.system', 'better-sqlite3')
+  span.end()
+  foundRule = engine.test(span)
+  assert.notEqual(foundRule, undefined)
+
+  // Test matching "node:sqlite"
+  span = tracer.startSpan('test-span', { kind: SpanKind.CLIENT }, ROOT_CONTEXT)
+  span.setAttribute('db.system', 'node:sqlite')
+  span.end()
+  foundRule = engine.test(span)
+  assert.notEqual(foundRule, undefined)
+
+  // Test non-matching value
+  span = tracer.startSpan('test-span', { kind: SpanKind.CLIENT }, ROOT_CONTEXT)
+  span.setAttribute('db.system', 'postgresql')
+  span.end()
+  foundRule = engine.test(span)
+  assert.equal(foundRule, undefined)
+})
+
+test('getCanonicalValue resolves mapping for matching attribute values', () => {
+  const rule = {
+    name: 'test-sqlite-canonical',
+    type: 'db',
+    matcher: {
+      required_span_kinds: ['client'],
+      required_attribute_keys: ['db.system'],
+      attribute_conditions: {
+        'db.system': {
+          expected: ['sqlite3', 'better-sqlite3', 'node:sqlite'],
+          value: 'sqlite'
+        }
+      }
+    }
+  }
+  const engine = new RulesEngine({ rules: [rule] })
+
+  const span = tracer.startSpan('test-span', { kind: SpanKind.CLIENT }, ROOT_CONTEXT)
+  span.setAttribute('db.system', 'better-sqlite3')
+  span.end()
+  const foundRule = engine.test(span)
+
+  assert.equal(foundRule.getCanonicalValue('db.system', 'sqlite3'), 'sqlite')
+  assert.equal(foundRule.getCanonicalValue('db.system', 'better-sqlite3'), 'sqlite')
+  assert.equal(foundRule.getCanonicalValue('db.system', 'node:sqlite'), 'sqlite')
+  assert.equal(foundRule.getCanonicalValue('db.system', 'postgresql'), null)
+})
+
+test('canonical value mapping does not interfere with array-based conditions', () => {
+  const rule = {
+    name: 'test-db-array',
+    type: 'db',
+    matcher: {
+      required_span_kinds: ['client'],
+      required_attribute_keys: ['db.system'],
+      attribute_conditions: {
+        'db.system': ['postgresql', 'mysql']
+      }
+    }
+  }
+  const engine = new RulesEngine({ rules: [rule] })
+
+  let span = tracer.startSpan('test-span', { kind: SpanKind.CLIENT }, ROOT_CONTEXT)
+  span.setAttribute('db.system', 'postgresql')
+  span.end()
+  assert.equal(engine.test(span)?.name, 'test-db-array')
+
+  span = tracer.startSpan('test-span', { kind: SpanKind.CLIENT }, ROOT_CONTEXT)
+  span.setAttribute('db.system', 'mysql')
+  span.end()
+  assert.equal(engine.test(span)?.name, 'test-db-array')
+
+  span = tracer.startSpan('test-span', { kind: SpanKind.CLIENT }, ROOT_CONTEXT)
+  span.setAttribute('db.system', 'sqlite3')
+  span.end()
+  assert.equal(engine.test(span), undefined)
+})
